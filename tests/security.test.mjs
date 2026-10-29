@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {checkRequest,validateSelection,createCsrfToken} from '../dashboard/lib/security.mjs';
+const token=createCsrfToken(),port=18474;
+const request=(headers={},method='POST')=>({method,headers:{host:`127.0.0.1:${port}`,origin:`http://127.0.0.1:${port}`,'x-csrf-token':token,...headers}});
+test('same-origin authenticated local request is accepted',()=>assert.doesNotThrow(()=>checkRequest(request(),port,token)));
+test('DNS rebinding host is rejected',()=>assert.throws(()=>checkRequest(request({host:`attacker.example:${port}`}),port,token),/host/));
+test('foreign origin cannot mutate camera data',()=>assert.throws(()=>checkRequest(request({origin:'https://attacker.example'}),port,token),/Cross-origin/));
+test('missing origin cannot mutate camera data',()=>assert.throws(()=>checkRequest(request({origin:undefined}),port,token),/same-origin/));
+test('invalid CSRF token is rejected',()=>assert.throws(()=>checkRequest(request({'x-csrf-token':'a'.repeat(64)}),port,token),/Refresh/));
+test('empty, duplicated and oversized selections are rejected',()=>{for(const ids of [[],['a'.repeat(64),'a'.repeat(64)],Array.from({length:101},(_,i)=>i.toString(16).padStart(64,'0')),['_'.repeat(64)]])assert.throws(()=>validateSelection(ids));});

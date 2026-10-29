@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Camera desk · Immich Importer</title><link rel="stylesheet" href="/app.css"><script type="module" src="/app.js"></script></head>
+<body>
+ <aside class="rail">
+  <a class="brand" href="/"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m8 4 2-2h4l2 2h4v16H4V4z"/><circle cx="12" cy="12" r="4"/></svg></span><span>camera desk<span class="brand-sub">IMMICH IMPORTER</span></span></a>
+  <span class="rail-label">WORKSPACE</span>
+  <button class="nav active" data-nav="overview"><span class="nav-icon">▦</span> Overview</button>
+  <button class="nav" data-nav="files"><span class="nav-icon">▧</span> Camera files <span id="nav-count" class="nav-count">—</span></button>
+  <button class="nav" data-nav="activity"><span class="nav-icon">◷</span> Activity</button>
+  <div class="rail-footer"><span class="online-dot"></span> LOCAL WORKSPACE<span>Your photos stay at home.</span></div>
+ </aside>
+ <main>
+  <header class="topbar"><div class="breadcrumb">WORKSPACE <span>/</span> CAMERA IMPORTER</div><div class="top-actions"><span class="local-label"><span class="online-dot"></span> On this PC</span><a id="immich-link" class="button ghost" target="_blank" rel="noreferrer">Open Immich <span>↗</span></a></div></header>
+  <section class="page-title" id="overview"><div><div class="eyebrow">A LITTLE LESS MANAGING. MORE MAKING.</div><h1>Your camera, in sync<span>.</span></h1><p>Review your imports and make room for what’s next.</p></div><button id="sync" class="button primary"><span>↻</span> Sync now</button></section>
+  <div id="error-banner" class="error-banner" hidden></div>
+  <section class="metrics" aria-label="Import summary">
+   <article class="metric"><div class="metric-top">ON YOUR CAMERA <span class="metric-icon">▧</span></div><div class="metric-value" id="camera-count">—</div><div class="metric-note">photos &amp; videos on the card</div></article>
+   <article class="metric"><div class="metric-top">IMPORTED TO IMMICH <span class="metric-icon green">✓</span></div><div class="metric-value" id="imported-count">—</div><div class="metric-note" id="imported-note">Your originals, kept together</div></article>
+   <article class="metric"><div class="metric-top">WAITING TO IMPORT <span class="metric-icon amber">◷</span></div><div class="metric-value" id="pending-count">—</div><div class="metric-note" id="pending-note">Checking your importer…</div></article>
+  </section>
+  <div class="workspace-grid">
+   <section class="library" id="files">
+    <div class="section-heading"><div><h2><span id="gallery-title">Camera files</span> <span id="file-total" class="count-pill">—</span></h2><p id="gallery-hint">Choose imported files to review for camera removal.</p></div><button id="refresh" class="icon-button" aria-label="Refresh camera files">↻</button></div>
+    <div class="library-toolbar"><div class="filters" role="group" aria-label="File type"><button class="filter active" data-filter="all">All files</button><button class="filter" data-filter="photo">Photos</button><button class="filter" data-filter="video">Videos</button></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Find a file…" aria-label="Find a file by name"></label></div>
+    <div class="selection-bar"><button id="select-imported" class="text-button">Select imported on camera</button><span id="selected-label">No files selected</span></div>
+    <div id="gallery" class="gallery" aria-live="polite"><div class="empty"><span class="spinner"></span><h3>Connecting to your camera desk</h3><p>Fetching the latest import status.</p></div></div>
+    <div class="delete-bar"><div><strong id="delete-summary">Make space, when you’re ready.</strong><span>Only selected camera copies can be removed.</span></div><button id="review-delete" class="button danger-outline" disabled>Review camera deletion</button></div>
+   </section>
+   <aside class="details">
+    <article class="connection-card"><div class="card-kicker">YOUR DEVICE <span id="connection-badge" class="badge neutral">Checking</span></div><div class="camera-illustration"><svg viewBox="0 0 180 100" fill="none"><path d="M25 30h31l9-13h31l9 13h41v56H25z" fill="#263531"/><rect x="30" y="36" width="110" height="42" rx="4" fill="#33453e"/><circle cx="90" cy="57" r="29" fill="#15231e" stroke="#607167" stroke-width="2"/><circle cx="90" cy="57" r="21" fill="#203a30" stroke="#8b9b7e"/><circle cx="90" cy="57" r="13" fill="#152a24"/><path d="m80 45 8-3" stroke="#c2d4c4" stroke-width="3" stroke-linecap="round"/><rect x="120" y="24" width="16" height="7" rx="2" fill="#182921"/><path d="M35 30v-7h13v7" fill="#516257"/><circle cx="127" cy="44" r="3" fill="#f58a55"/></svg></div><h3 id="camera-name">Your camera</h3><p id="camera-detail">Waiting for device status</p><div class="connection-bottom"><span class="online-dot" id="device-dot"></span><span id="connection-note">Checking connection</span></div></article>
+    <article class="workflow-card"><h3>A clear path home</h3><div class="workflow-step"><span class="step-icon">1</span><div><strong>Copy to your PC</strong><p>Original files stay in your local archive.</p></div></div><div class="workflow-step"><span class="step-icon">2</span><div><strong>Import into Immich</strong><p>Existing matches are kept without duplicates.</p></div></div><div class="workflow-step"><span class="step-icon">3</span><div><strong>You decide what to remove</strong><p>Both copies are checked again before camera deletion.</p></div></div></article>
+    <article class="activity-card" id="activity"><div class="small-heading"><h3>Recent activity</h3><span class="live-label">LIVE</span></div><div id="activity-list"><p class="muted">No recent activity.</p></div></article>
+   </aside>
+  </div>
+  <footer class="page-footer"><span>Camera desk · Built for your home library</span><span id="last-checked">Waiting for first update</span></footer>
+ </main>
+ <div id="modal" class="modal-backdrop" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button id="modal-close" class="modal-close" aria-label="Close confirmation">×</button><div id="modal-content"></div></section></div>
+ <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

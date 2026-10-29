@@ -168,6 +168,7 @@ function Copy-CameraFiles {
 $mutex=[Threading.Mutex]::new($false,'Local\ImmichCameraSync')
 $locked=$false
 $client=$null
+$wake=$null
 try{
  [Diagnostics.Process]::GetCurrentProcess().PriorityClass='BelowNormal'
  try{$locked=$mutex.WaitOne(0)}catch [Threading.AbandonedMutexException]{$locked=$true}
@@ -184,6 +185,7 @@ try{
  $client.Timeout=[TimeSpan]::FromMinutes(60)
  $client.DefaultRequestHeaders.Add('x-api-key',$key)
  $key=$null
+ $wake=[Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::AutoReset,'Local\ImmichCameraSyncWake')
  if($VerifyFile){Process-File (Get-Item -LiteralPath $VerifyFile) -ReadOnly;exit}
  do{
   $status=[ordered]@{checkedAt=(Get-Date).ToString('o');state='Watching inbox';inbox=$config.inbox;album=$config.albumName;pending=0;errors=0;completed=$files.Count;cameraConfigured=($null -ne $config.source -and $config.source.kind -ne 'unconfigured')}
@@ -206,10 +208,11 @@ try{
    if($status.errors){$status.state='Retrying incomplete files'}
   }catch{$status.state='Waiting for Immich';$status.errors++;Write-Event 'error' 'server-unavailable' '' $_.Exception.Message}
   Save-Json $status $statusPath
-  if(!$Once){Start-Sleep -Seconds $config.pollSeconds}
+  if(!$Once){$null=$wake.WaitOne([int]$config.pollSeconds*1000)}
  }while(!$Once)
 }finally{
  if($client){$client.Dispose()}
+ if($wake){$wake.Dispose()}
  if($locked){$mutex.ReleaseMutex()}
  $mutex.Dispose()
 }

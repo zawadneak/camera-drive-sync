@@ -30,3 +30,6 @@ source-state.json
 *.m2ts
 *.zip
 *.dump
+runtime/
+node_modules/
+dashboard-settings.json
