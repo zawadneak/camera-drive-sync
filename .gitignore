@@ -1,0 +1,32 @@
+# Credentials and machine-specific state stay in the installation directory.
+private/
+local/
+Inbox/
+data/
+config.json
+state.json
+status.json
+source-state.json
+*.dpapi
+*.jsonl
+.env
+.env.*
+*.tmp
+*.partial
+*.log
+# Never commit personal media or recovery/database exports.
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.arw
+*.dng
+*.cr2
+*.cr3
+*.nef
+*.mp4
+*.mov
+*.mts
+*.m2ts
+*.zip
+*.dump

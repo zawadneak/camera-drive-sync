@@ -1,0 +1,16 @@
+{
+  "server": "http://127.0.0.1:2283",
+  "inbox": "D:\\CameraSync\\Inbox",
+  "albumName": "Camera",
+  "albumId": "SET_BY_INSTALLER",
+  "pollSeconds": 30,
+  "settleSeconds": 10,
+  "extensions": [".jpg", ".jpeg", ".png", ".heic", ".arw", ".dng", ".cr2", ".cr3", ".nef", ".tif", ".tiff", ".mp4", ".mov", ".mts", ".m2ts"],
+  "source": {
+    "kind": "usb-disk",
+    "name": "Camera",
+    "diskPnpId": "DEVICE_ID_FROM_LIST_CAMERAS",
+    "mediaRoots": ["DCIM", "PRIVATE\\M4ROOT\\CLIP", "PRIVATE\\AVCHD\\BDMV\\STREAM", "MP_ROOT"]
+  },
+  "dateOverrides": {}
+}
