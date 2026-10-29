@@ -30,6 +30,12 @@ if($existing){
  if((Get-ScheduledTask -TaskName $taskName).State -eq 'Running'){throw 'The previous dashboard did not stop'}
  Start-Sleep -Milliseconds 500
 }
+# Remove only this installation's leftover Node child after an earlier update.
+$expectedNode=Join-Path $InstallRoot 'runtime\node.exe'
+$expectedServer=Join-Path $InstallRoot 'dashboard\server.mjs'
+foreach($process in Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object {$_.ExecutablePath -eq $expectedNode -and $_.CommandLine -like ('*'+$expectedServer+'*')}){
+ Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+}
 $runtime=Join-Path $InstallRoot 'runtime';$destination=Join-Path $InstallRoot 'dashboard'
 New-Item -ItemType Directory -Path $runtime,$destination -Force | Out-Null
 $runtimeNode=Join-Path $runtime 'node.exe'

@@ -50,7 +50,7 @@ Install after the importer, with an existing trusted Node.js 22+ executable:
 .\scripts\Install-CameraDashboard.ps1 -NodeExePath 'C:\Program Files\nodejs\node.exe'
 ```
 
-The installer copies the runtime into the installation directory and creates the **Immich Camera Dashboard** Windows logon task. It adds only `asset.download` to the existing service key, using the management key prompt, so original copies can be verified before camera deletion. It does not grant permission to delete anything in Immich.
+The installer copies the runtime into the installation directory and creates the **Immich Camera Dashboard** Windows logon task. A Windows job-object supervisor keeps Node and its helper processes attached to that task; stopping/restarting the task closes the HTTP listener and children instead of leaving an orphan server. Node waits for the supervisor handshake before loading credentials or listening. The installer adds only `asset.download` to the existing service key, using the management key prompt, so original copies can be verified before camera deletion. It does not grant permission to delete anything in Immich.
 
 The interface shows device connection, imported and pending files, image/video previews, search, type filters, and recent activity. **Sync now** signals the existing importer without interrupting a transfer.
 

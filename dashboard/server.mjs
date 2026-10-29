@@ -10,6 +10,14 @@ import {createCsrfToken,checkRequest,readJson} from './lib/security.mjs';
 import {createDeletionService} from './lib/deletion.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const args=process.argv.slice(2);
+if(args.includes('--supervised')){
+ await new Promise((resolve,reject)=>{
+  let input='',started=false;
+  process.stdin.setEncoding('utf8');
+  process.stdin.on('data',chunk=>{input+=chunk;if(input.length>32&&!started)reject(new Error('Invalid supervisor handshake'));if(!started&&input.includes('\n')){started=true;if(input.trim()==='START')resolve();else reject(new Error('Invalid supervisor handshake'));}});
+  process.stdin.on('end',()=>{if(!started)reject(new Error('Supervisor ended before startup'));});
+ });
+}
 const option=(name,fallback)=>{const i=args.indexOf(name);return i<0?fallback:args[i+1];};
 const root=option('--root','D:\\CameraSync');
 const port=Number(option('--port','18474'));
