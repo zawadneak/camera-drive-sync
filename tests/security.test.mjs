@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {checkRequest,validateSelection,createCsrfToken} from '../dashboard/lib/security.mjs';
+import {checkRequest,validateSelection,createCsrfToken,selectionLimit,readJson} from '../dashboard/lib/security.mjs';
+import {Readable} from 'node:stream';
 const token=createCsrfToken(),port=18474;
 const request=(headers={},method='POST')=>({method,headers:{host:`127.0.0.1:${port}`,origin:`http://127.0.0.1:${port}`,'x-csrf-token':token,...headers}});
 test('same-origin authenticated local request is accepted',()=>assert.doesNotThrow(()=>checkRequest(request(),port,token)));
@@ -7,4 +8,6 @@ test('DNS rebinding host is rejected',()=>assert.throws(()=>checkRequest(request
 test('foreign origin cannot mutate camera data',()=>assert.throws(()=>checkRequest(request({origin:'https://attacker.example'}),port,token),/Cross-origin/));
 test('missing origin cannot mutate camera data',()=>assert.throws(()=>checkRequest(request({origin:undefined}),port,token),/same-origin/));
 test('invalid CSRF token is rejected',()=>assert.throws(()=>checkRequest(request({'x-csrf-token':'a'.repeat(64)}),port,token),/Refresh/));
-test('empty, duplicated and oversized selections are rejected',()=>{for(const ids of [[],['a'.repeat(64),'a'.repeat(64)],Array.from({length:101},(_,i)=>i.toString(16).padStart(64,'0')),['_'.repeat(64)]])assert.throws(()=>validateSelection(ids));});
+test('empty, duplicated and oversized selections are rejected',()=>{for(const ids of [[],['a'.repeat(64),'a'.repeat(64)],Array.from({length:selectionLimit+1},(_,i)=>i.toString(16).padStart(64,'0')),['_'.repeat(64)]])assert.throws(()=>validateSelection(ids));});
+test('a whole-card selection over the old 100-file limit survives HTTP parsing',async()=>{const ids=Array.from({length:selectionLimit},(_,i)=>i.toString(16).padStart(64,'0'));const parsed=await readJson(Readable.from([Buffer.from(JSON.stringify({ids}))]));assert.deepEqual(validateSelection(parsed.ids),ids);});
+test('oversized HTTP bodies are still rejected',async()=>{await assert.rejects(readJson(Readable.from([Buffer.alloc(1_048_577)])),/Request too large/);});

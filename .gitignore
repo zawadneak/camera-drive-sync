@@ -33,3 +33,6 @@ source-state.json
 runtime/
 node_modules/
 dashboard-settings.json
+__pycache__/
+*.pyc
+.venv/

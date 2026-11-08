@@ -43,10 +43,14 @@ if(!(Test-Path -LiteralPath $runtimeNode) -or (Get-FileHash -LiteralPath $NodeEx
 $source=Join-Path (Split-Path $PSScriptRoot) 'dashboard'
 foreach($file in Get-ChildItem -LiteralPath $source -Recurse -File){$relative=$file.FullName.Substring($source.Length+1);$target=Join-Path $destination $relative;New-Item -ItemType Directory -Path (Split-Path $target) -Force | Out-Null;Copy-Item -LiteralPath $file.FullName -Destination $target -Force}
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Start-CameraDashboard.ps1') -Destination (Join-Path $InstallRoot 'Start-CameraDashboard.ps1') -Force
-@{port=$Port;bind='127.0.0.1';nodeVersion=$version} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $InstallRoot 'dashboard-settings.json') -Encoding UTF8
+$dashboardSettings=@{port=$Port;bind='127.0.0.1';nodeVersion=$version}
+$dashboardSettingsPath=Join-Path $InstallRoot 'dashboard-settings.json'
+if(Test-Path -LiteralPath $dashboardSettingsPath){$previousSettings=Get-Content -LiteralPath $dashboardSettingsPath -Raw|ConvertFrom-Json;if($previousSettings.imagePython){$dashboardSettings.imagePython=$previousSettings.imagePython}}
+$dashboardSettings | ConvertTo-Json | Set-Content -LiteralPath $dashboardSettingsPath -Encoding UTF8
 $identity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $action=New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+(Join-Path $InstallRoot 'Start-CameraDashboard.ps1')+'" -Root "'+$InstallRoot+'"')
-$trigger=New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
+. (Join-Path $PSScriptRoot 'CameraTaskTriggers.ps1')
+$trigger=@(New-CameraTaskTriggers $identity.Name)
 $principal=New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited
 $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -RestartCount 999 -RestartInterval ([TimeSpan]::FromMinutes(1)) -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Local camera dashboard with verified, explicitly confirmed camera-file removal.' -Force | Out-Null

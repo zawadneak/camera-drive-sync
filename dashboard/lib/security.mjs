@@ -11,12 +11,13 @@ export function checkRequest(req,port,token){
   if(typeof supplied!=='string'||supplied.length!==token.length||!timingSafeEqual(Buffer.from(supplied),Buffer.from(token)))throw Object.assign(new Error('Refresh the dashboard before trying again'),{status:403});
  }
 }
+export const selectionLimit=10_000;
 export function validateSelection(ids){
- if(!Array.isArray(ids)||ids.length<1||ids.length>100||ids.some(id=>typeof id!=='string'||!/^[a-f0-9]{64}$/.test(id))||new Set(ids).size!==ids.length)throw Object.assign(new Error('Select between 1 and 100 different files'),{status:400});
+ if(!Array.isArray(ids)||ids.length<1||ids.length>selectionLimit||ids.some(id=>typeof id!=='string'||!/^[a-f0-9]{64}$/.test(id))||new Set(ids).size!==ids.length)throw Object.assign(new Error(`Select between 1 and ${selectionLimit.toLocaleString('en-US')} different files`),{status:400});
  return ids;
 }
 export async function readJson(req){
  let size=0;const chunks=[];
- for await(const chunk of req){size+=chunk.length;if(size>16_384)throw Object.assign(new Error('Request too large'),{status:413});chunks.push(chunk);}
+ for await(const chunk of req){size+=chunk.length;if(size>1_048_576)throw Object.assign(new Error('Request too large'),{status:413});chunks.push(chunk);}
  try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw Object.assign(new Error('Invalid JSON request'),{status:400});}
 }

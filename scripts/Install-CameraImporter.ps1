@@ -85,7 +85,8 @@ try{
  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Watch-CameraInbox.ps1') -Destination (Join-Path $InstallRoot 'Watch-CameraInbox.ps1') -Force
  $example | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $configPath -Encoding UTF8
  $action=New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument ('-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+(Join-Path $InstallRoot 'Watch-CameraInbox.ps1')+'" -Root "'+$InstallRoot+'"')
- $trigger=New-ScheduledTaskTrigger -AtLogOn -User $identity.Name
+ . (Join-Path $PSScriptRoot 'CameraTaskTriggers.ps1')
+ $trigger=@(New-CameraTaskTriggers $identity.Name)
  $principal=New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited
  $settings=New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -RestartCount 999 -RestartInterval ([TimeSpan]::FromMinutes(1)) -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
  Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'Copy the configured camera to the local inbox and import new media into Immich.' -Force | Out-Null

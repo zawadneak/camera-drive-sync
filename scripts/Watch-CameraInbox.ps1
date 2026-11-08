@@ -10,6 +10,17 @@ $logPath=Join-Path $Root 'events.jsonl'
 $files=@{}
 $sourceFiles=@{}
 $sourceStatePath=Join-Path $private 'source-state.json'
+$fileStatusPath=Join-Path $private 'file-status.json'
+$fileStages=@{}
+$processStartedAtTicks=[Diagnostics.Process]::GetCurrentProcess().StartTime.ToUniversalTime().Ticks
+if(Test-Path -LiteralPath $fileStatusPath){
+ $savedStages=Get-Content -LiteralPath $fileStatusPath -Raw | ConvertFrom-Json
+ foreach($p in $savedStages.files.PSObject.Properties){
+  $entry=$p.Value
+  if($entry.stage -notin @('needs-date','in-trash','retry','copied','imported','duplicate','queued')){$entry.stage='queued'}
+  $fileStages[$p.Name]=$entry
+ }
+}
 if(Test-Path -LiteralPath $sourceStatePath){
  $saved=Get-Content -LiteralPath $sourceStatePath -Raw | ConvertFrom-Json
  foreach($p in $saved.PSObject.Properties){$sourceFiles[$p.Name]=$p.Value}
@@ -25,6 +36,17 @@ function Save-Json($Value,[string]$Path){
  $temp=$Path+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
  $Value | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $temp -Encoding UTF8
  Move-Item -LiteralPath $temp -Destination $Path -Force
+}
+function Set-FileStage([string]$JobKey,[string]$Fingerprint,[string]$Stage){
+ if($DryRun -or $VerifyFile){return}
+ $fileStages[$JobKey]=@{fingerprint=$Fingerprint;stage=$Stage;updatedAt=(Get-Date).ToString('o')}
+ Save-Json @{processId=$PID;processStartedAtTicks=$processStartedAtTicks;files=$fileStages} $fileStatusPath
+ if($status){
+  # Job keys contain a device identifier and pipe delimiters, not a Windows path.
+  $displayPath=$JobKey.Substring($JobKey.LastIndexOf('|')+1)
+  $status['checkedAt']=(Get-Date).ToString('o');$status['stage']=$Stage;$status['currentFile']=[IO.Path]::GetFileName($displayPath);$status['currentBytes']=0;$status['currentTotalBytes']=0;$status['completed']=$files.Count
+  Save-Json $status $statusPath
+ }
 }
 function Invoke-Api([string]$Method,[string]$Path,$Body){
  $request=[Net.Http.HttpRequestMessage]::new([Net.Http.HttpMethod]::new($Method),($config.server+$Path))
@@ -83,8 +105,10 @@ function Upload-Asset($File,[string]$Hash,[string]$CorrectedDate){
 }
 function Process-File($File,[switch]$ReadOnly){
  $fingerprint="$($File.Length):$($File.LastWriteTimeUtc.Ticks)"
+ $jobKey='archive|'+$File.FullName
  if(!$ReadOnly -and $files.ContainsKey($File.FullName) -and $files[$File.FullName].fingerprint -eq $fingerprint){return}
- if(!$ReadOnly -and (([datetime]::UtcNow-$File.LastWriteTimeUtc).TotalSeconds -lt $config.settleSeconds)){return}
+ if(!$ReadOnly -and (([datetime]::UtcNow-$File.LastWriteTimeUtc).TotalSeconds -lt $config.settleSeconds)){Set-FileStage $jobKey $fingerprint 'settling';return}
+ Set-FileStage $jobKey $fingerprint 'checking'
  $hash=Get-Checksum $File.FullName
  $correctedDate=$null
  if($config.dateOverrides){$override=$config.dateOverrides.PSObject.Properties[$hash];if($override){$correctedDate=([DateTimeOffset]$override.Value).ToString('o')}}
@@ -95,10 +119,12 @@ function Process-File($File,[switch]$ReadOnly){
   return [pscustomobject]@{file=$File.Name;checksum=$hash;action=$match.action;existingAssetId=$match.assetId}
  }
  if(!$correctedDate -and $File.LastWriteTime.Year -lt 2021){
+  Set-FileStage $jobKey $fingerprint 'needs-date'
   Write-Event 'warning' 'camera-clock-needs-review' $File.Name 'Date precedes 2021; kept locally until its recording date is confirmed.'
   return
  }
  if($match.isTrashed){
+  Set-FileStage $jobKey $fingerprint 'in-trash'
   Write-Event 'warning' 'already-in-trash' $File.Name 'Skipped; restore it in Immich if wanted.'
   return
  }
@@ -107,16 +133,19 @@ function Process-File($File,[switch]$ReadOnly){
  if($match.action -eq 'reject' -and $match.reason -eq 'duplicate'){
   $assetId=$match.assetId;$outcome='existing-duplicate'
  }elseif($match.action -eq 'accept'){
+  Set-FileStage $jobKey $fingerprint 'uploading'
   $uploaded=Upload-Asset $File $hash $correctedDate
   $assetId=$uploaded.id
  }else{throw 'Unexpected checksum-check response'}
  if(!$assetId){throw 'No asset ID returned'}
  $detail=Invoke-Api 'GET' ('/api/assets/'+$assetId) $null
  if(!$detail.id){throw 'Uploaded asset could not be verified'}
+ Set-FileStage $jobKey $fingerprint 'adding-to-album'
  $membership=Invoke-Api 'PUT' ('/api/albums/'+$config.albumId+'/assets') @{ids=@($assetId)}
  foreach($result in $membership){if(!$result.success -and $result.error -ne 'duplicate'){throw 'Album membership could not be confirmed'}}
- $files[$File.FullName]=@{fingerprint=$fingerprint;checksum=$hash;assetId=$assetId;completed=(Get-Date).ToString('o')}
+ $files[$File.FullName]=@{fingerprint=$fingerprint;checksum=$hash;assetId=$assetId;completed=(Get-Date).ToString('o');outcome=$outcome}
  Save-Json $files $statePath
+ Set-FileStage $jobKey $fingerprint $(if($outcome -eq 'existing-duplicate'){'duplicate'}else{'imported'})
  Write-Event 'info' $outcome $File.Name $assetId
 }
 function Copy-CameraFiles {
@@ -135,6 +164,9 @@ function Copy-CameraFiles {
      $fp="$($file.Length):$($file.LastWriteTimeUtc.Ticks)"
      $cached=$sourceFiles[$sourceKey]
      if($cached -and $cached.fingerprint -eq $fp -and (Test-Path -LiteralPath $cached.destination)){continue}
+     $jobKey='camera|'+$sourceKey
+     try{
+     Set-FileStage $jobKey $fp 'reading-camera'
      $hash=Get-Checksum $file.FullName
      if($DryRun){Write-Event 'info' 'camera-copy-readonly' $file.Name $hash;continue}
      $directory=Join-Path (Join-Path $config.inbox $config.source.name) $hash
@@ -145,11 +177,23 @@ function Copy-CameraFiles {
       $free=[IO.DriveInfo]::new([IO.Path]::GetPathRoot($destination)).AvailableFreeSpace
       if($free -lt (2*$file.Length+1GB)){throw 'Not enough free space to safely copy and import the next file'}
       $temporary=$destination+'.partial'
+      Set-FileStage $jobKey $fp 'copying'
       $inputStream=[IO.File]::Open($file.FullName,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
       try{
        $outputStream=[IO.File]::Open($temporary,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::None)
-       try{$inputStream.CopyTo($outputStream);$outputStream.Flush($true)}finally{$outputStream.Dispose()}
+       try{
+        $buffer=New-Object byte[] 1048576;$transferred=[long]0;$lastReport=[datetime]::UtcNow
+        while(($read=$inputStream.Read($buffer,0,$buffer.Length)) -gt 0){
+         $outputStream.Write($buffer,0,$read);$transferred+=$read
+         if($status -and ([datetime]::UtcNow-$lastReport).TotalSeconds -ge 1){
+          $status['checkedAt']=(Get-Date).ToString('o');$status['currentBytes']=$transferred;$status['currentTotalBytes']=$file.Length
+          Save-Json $status $statusPath;$lastReport=[datetime]::UtcNow
+         }
+        }
+        $outputStream.Flush($true)
+       }finally{$outputStream.Dispose()}
       }finally{$inputStream.Dispose()}
+      Set-FileStage $jobKey $fp 'verifying-copy'
       if((Get-Checksum $temporary) -ne $hash){throw ('Copy checksum mismatch for '+$file.Name)}
       [IO.File]::SetLastWriteTimeUtc($temporary,$file.LastWriteTimeUtc)
       [IO.File]::SetCreationTimeUtc($temporary,$file.LastWriteTimeUtc)
@@ -159,6 +203,8 @@ function Copy-CameraFiles {
      }
      $sourceFiles[$sourceKey]=@{fingerprint=$fp;checksum=$hash;destination=$destination}
      Save-Json $sourceFiles $sourceStatePath
+     Set-FileStage $jobKey $fp 'copied'
+     }catch{Set-FileStage $jobKey $fp 'retry';throw}
     }
    }
   }
@@ -188,12 +234,20 @@ try{
  $wake=[Threading.EventWaitHandle]::new($false,[Threading.EventResetMode]::AutoReset,'Local\ImmichCameraSyncWake')
  if($VerifyFile){Process-File (Get-Item -LiteralPath $VerifyFile) -ReadOnly;exit}
  do{
+  # Apply explicitly confirmed, checksum-specific date reviews on the next scan.
+  $latestConfig=Get-Content -LiteralPath (Join-Path $Root 'config.json') -Raw | ConvertFrom-Json
+  $config.dateOverrides=$latestConfig.dateOverrides
   $status=[ordered]@{checkedAt=(Get-Date).ToString('o');state='Watching inbox';inbox=$config.inbox;album=$config.albumName;pending=0;errors=0;completed=$files.Count;cameraConfigured=($null -ne $config.source -and $config.source.kind -ne 'unconfigured')}
+  $status['stage']='scanning';$status['currentFile']=$null
+  Save-Json $status $statusPath
+  $scanPhase='camera'
   try{
    $cameraResult=Copy-CameraFiles
    $status.cameraConnected=$cameraResult.connected
    $status.copiedThisScan=$cameraResult.copied
+   $scanPhase='immich'
    $null=Invoke-Api 'GET' ('/api/albums/'+$config.albumId) $null
+   $scanPhase='inbox'
    $candidates=@(Get-ChildItem -LiteralPath $config.inbox -File -Recurse | Where-Object {$_.Extension.ToLowerInvariant() -in $config.extensions})
    foreach($file in $candidates){
     $fp="$($file.Length):$($file.LastWriteTimeUtc.Ticks)"
@@ -202,11 +256,15 @@ try{
     try{
      $null=Process-File $file
      if($files.ContainsKey($file.FullName) -and $files[$file.FullName].fingerprint -eq $fp){$status.pending--}
-    }catch{$status.errors++;Write-Event 'error' 'retry-later' $file.Name $_.Exception.Message}
+    }catch{$status.errors++;Set-FileStage ('archive|'+$file.FullName) $fp 'retry';Write-Event 'error' 'retry-later' $file.Name $_.Exception.Message}
    }
    $status.completed=$files.Count
    if($status.errors){$status.state='Retrying incomplete files'}
-  }catch{$status.state='Waiting for Immich';$status.errors++;Write-Event 'error' 'server-unavailable' '' $_.Exception.Message}
+  }catch{
+   $status.state=if($scanPhase -eq 'immich'){'Waiting for Immich'}elseif($scanPhase -eq 'camera'){'Camera scan failed; retrying'}else{'Inbox scan failed; retrying'}
+   $status.errors++;Write-Event 'error' ($scanPhase+'-unavailable') '' $_.Exception.Message
+  }
+  $status['stage']='idle';$status['currentFile']=$null;$status['currentBytes']=0;$status['currentTotalBytes']=0;$status['checkedAt']=(Get-Date).ToString('o')
   Save-Json $status $statusPath
   if(!$Once){$null=$wake.WaitOne([int]$config.pollSeconds*1000)}
  }while(!$Once)

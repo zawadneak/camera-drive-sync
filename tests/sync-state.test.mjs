@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {syncState} from '../dashboard/public/sync-state.js';
+test('completed import wins over an old waiting or error record',()=>assert.equal(syncState({imported:true,job:{stage:'retry'}}).stage,'imported'));
+test('a duplicate is complete only after successful album membership',()=>{assert.equal(syncState({imported:true,outcome:'existing-duplicate'}).stage,'duplicate');assert.equal(syncState({copied:true,job:{stage:'adding-to-album',active:true}}).stage,'adding-to-album');});
+test('an unset recording date explains why a saved photo cannot upload',()=>{const s=syncState({copied:true,needsDateReview:true});assert.equal(s.stage,'needs-date');assert.match(s.detail,/Confirm its recording date/);});
+test('each live processing stage is reported without inventing a percentage',()=>{for(const stage of ['settling','reading-camera','copying','verifying-copy','checking','uploading','adding-to-album']){const s=syncState({job:{stage,active:true}});assert.equal(s.stage,stage);assert.equal('percent' in s,false);}});
+test('a stopped worker cannot leave a photo uploading forever',()=>assert.equal(syncState({job:{stage:'uploading',active:false}}).stage,'paused'));
+test('trash and failed uploads explain the required action',()=>{assert.equal(syncState({job:{stage:'in-trash'}}).kind,'attention');assert.equal(syncState({job:{stage:'retry'}}).stage,'retry');});
+test('saved and uncopied files have distinct queue states',()=>{assert.equal(syncState({copied:true}).stage,'copied');assert.equal(syncState({copied:false}).stage,'queued');});
+test('server outages do not disguise a date hold or a completed import',()=>{const server={state:'Waiting for Immich'};assert.equal(syncState({copied:true},server).stage,'waiting-server');assert.equal(syncState({copied:true,needsDateReview:true},server).stage,'needs-date');assert.equal(syncState({imported:true},server).stage,'imported');});
+test('a confirmed date does not keep the old date-review badge',()=>assert.equal(syncState({copied:true,needsDateReview:false,job:{stage:'needs-date'}}).stage,'copied'));
